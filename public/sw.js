@@ -109,56 +109,70 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Push Notification Event - Final Fixed Version
 self.addEventListener('push', (event) => {
     console.log('[SW] Push event received');
-  
+
     // Default notification content
     const defaultNotification = {
-      title: 'New Update',
-      body: 'You have new updates!',
-      url: '/'
+        title: 'New Update',
+        body: 'You have new updates!',
+        url: '/'
     };
-  
-    // Safely extract notification data
-    let notificationData = {...defaultNotification};
-    
+
+    // Extract notification data safely
+    let notificationData = { ...defaultNotification };
+    let textData = '';
+
     try {
-      // First try to get text (won't throw for non-JSON)
-      const textData = event.data?.text() || '';
-      
-      // Check if text looks like JSON
-      if (textData.trim().startsWith('{') && textData.trim().endsWith('}')) {
-        try {
-          // If it looks like JSON, try to parse
-          notificationData = {...defaultNotification, ...JSON.parse(textData)};
-        } catch (e) {
-          // If JSON parsing fails, use as plain text
-          notificationData.body = textData || defaultNotification.body;
-        }
-      } else {
-        // Plain text payload
-        notificationData.body = textData || defaultNotification.body;
-      }
+        // Try getting push message as text
+        textData = event.data ? event.data.text() : '';
     } catch (e) {
-      console.warn('[SW] Could not read push data:', e);
+        console.warn('[SW] Push data could not be read:', e);
     }
-  
-    console.log('[SW] Showing notification:', notificationData);
-  
-    event.waitUntil(
-      self.registration.showNotification(
-        notificationData.title,
-        {
-          body: notificationData.body,
-          data: { url: notificationData.url },
-          vibrate: [200, 100, 200]
+
+    if (textData.trim().startsWith('{') && textData.trim().endsWith('}')) {
+        // If the push message is JSON, try parsing it
+        try {
+            notificationData = { ...defaultNotification, ...JSON.parse(textData) };
+        } catch (e) {
+            console.warn('[SW] Invalid JSON payload:', e);
+            notificationData.body = textData || defaultNotification.body;
         }
-      ).catch(err => {
-        console.error('[SW] Failed to show notification:', err);
-      })
+    } else {
+        // If it's plain text, set it as the body
+        notificationData.body = textData || defaultNotification.body;
+    }
+
+    console.log('[SW] Showing notification:', notificationData);
+
+    event.waitUntil(
+        self.registration.showNotification(notificationData.title, {
+            body: notificationData.body,
+            data: { url: notificationData.url },
+            vibrate: [200, 100, 200],
+            icon: '/admin.png',  // Change to your notification icon
+            badge: '/assets/react.svg', // Change to your small notification icon
+            actions: [
+                { action: 'open_url', title: 'Open' }
+            ]
+        }).catch(err => {
+            console.error('[SW] Failed to show notification:', err);
+        })
     );
-  });
+});
+
+// Handle notification click
+self.addEventListener('notificationclick', (event) => {
+    console.log('[SW] Notification click received', event.notification);
+    event.notification.close();
+
+    if (event.notification.data && event.notification.data.url) {
+        event.waitUntil(
+            clients.openWindow(event.notification.data.url)
+        );
+    }
+});
+
 
 // Helper Functions
 async function handleSync() {
