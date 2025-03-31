@@ -112,26 +112,25 @@ self.addEventListener('sync', (event) => {
 self.addEventListener('push', (event) => {
     console.log('[SW] Push event received');
 
-    // Default notification content
+    // Default notification structure
     const defaultNotification = {
         title: 'New Update',
         body: 'You have new updates!',
         url: '/'
     };
 
-    // Extract notification data safely
+    // Extract push message safely
     let notificationData = { ...defaultNotification };
     let textData = '';
 
     try {
-        // Try getting push message as text
         textData = event.data ? event.data.text() : '';
     } catch (e) {
         console.warn('[SW] Push data could not be read:', e);
     }
 
+    // Check if text is a valid JSON object
     if (textData.trim().startsWith('{') && textData.trim().endsWith('}')) {
-        // If the push message is JSON, try parsing it
         try {
             notificationData = { ...defaultNotification, ...JSON.parse(textData) };
         } catch (e) {
@@ -139,7 +138,7 @@ self.addEventListener('push', (event) => {
             notificationData.body = textData || defaultNotification.body;
         }
     } else {
-        // If it's plain text, set it as the body
+        // If plain text, use as notification body
         notificationData.body = textData || defaultNotification.body;
     }
 
@@ -150,8 +149,8 @@ self.addEventListener('push', (event) => {
             body: notificationData.body,
             data: { url: notificationData.url },
             vibrate: [200, 100, 200],
-            icon: '/admin.png',  // Change to your notification icon
-            badge: '/assets/react.svg', // Change to your small notification icon
+            icon: '/admin.png',  // Update with your notification icon
+            badge: '/assets/react.svg', // Small icon
             actions: [
                 { action: 'open_url', title: 'Open' }
             ]
@@ -161,7 +160,7 @@ self.addEventListener('push', (event) => {
     );
 });
 
-// Handle notification click
+// Handle notification click event
 self.addEventListener('notificationclick', (event) => {
     console.log('[SW] Notification click received', event.notification);
     event.notification.close();
@@ -172,6 +171,9 @@ self.addEventListener('notificationclick', (event) => {
         );
     }
 });
+
+
+
 
 
 // Helper Functions
