@@ -110,23 +110,34 @@ self.addEventListener('sync', (event) => {
 
 // Push Notification Event
 self.addEventListener('push', (event) => {
-  console.log('[SW] Push notification received');
+    console.log('[SW] Push event received');
+    
+    let payload;
+    try {
+      payload = event.data?.json() || { 
+        title: 'New Update', 
+        body: 'You have new updates!',
+        url: '/' 
+      };
+    } catch (e) {
+      // Handle non-JSON payload (plain text)
+      const text = event.data?.text() || 'New update available';
+      payload = {
+        title: 'Notification',
+        body: text,
+        url: '/'
+      };
+    }
   
-  const data = event.data?.json() || {
-    title: 'New Update',
-    body: 'There are new updates available!',
-    url: '/'
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      data: { url: data.url }
-    }).then(() => {
-      console.log('[SW] Notification shown');
-    })
-  );
-});
+    console.log('[SW] Notification payload:', payload);
+  
+    event.waitUntil(
+      self.registration.showNotification(payload.title, {
+        body: payload.body,
+        data: { url: payload.url || '/' }
+      })
+    );
+  });
 
 // Example sync function (mock implementation)
 function syncData() {
