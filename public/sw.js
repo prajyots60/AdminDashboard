@@ -1,4 +1,4 @@
-const CACHE_NAME = 'admin-dashboard-cache-v3';
+const CACHE_NAME = 'admin-dashboard-cache-v4';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE_URLS = [
   '/',
@@ -10,7 +10,6 @@ const PRECACHE_URLS = [
   OFFLINE_URL
 ];
 
-
 // Install Event
 self.addEventListener('install', (event) => {
   console.log('[SW] Install event triggered');
@@ -18,11 +17,13 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then(cache => {
         console.log('[SW] Cache opened');
-        return cache.addAll([
-          '/',
-          '/index.html',
-          OFFLINE_URL
-        ]);
+        return Promise.all(
+          PRECACHE_URLS.map(url => 
+            cache.add(url).catch(err => 
+              console.warn(`[SW] Failed to cache ${url}:`, err)
+            )
+          )
+        );
       })
       .then(() => {
         console.log('[SW] Pre-caching complete');
@@ -52,101 +53,111 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event (Network first, then cache)
+// Fetch Event (Stale-While-Revalidate strategy)
 self.addEventListener('fetch', (event) => {
-  console.log(`[SW] Fetching: ${event.request.url}`);
-  
-  // Skip non-GET requests
   if (event.request.method !== 'GET') return;
-
+  
   event.respondWith(
-    fetch(event.request)
-      .then(networkResponse => {
+    (async () => {
+      try {
+        // Try to fetch from network first
+        const networkResponse = await fetch(event.request);
         console.log(`[SW] Network response for ${event.request.url}`);
         
-        // Cache the response if valid
+        // Update cache in background
         if (networkResponse.ok) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              console.log(`[SW] Caching response for ${event.request.url}`);
-              cache.put(event.request, responseToCache);
-            });
+          const cache = await caches.open(CACHE_NAME);
+          cache.put(event.request, networkResponse.clone());
         }
+        
         return networkResponse;
-      })
-      .catch(async error => {
-        console.log(`[SW] Network failed for ${event.request.url}, trying cache...`);
+      } catch (error) {
+        // Network failed - try cache
+        console.log(`[SW] Network failed, trying cache for ${event.request.url}`);
         const cachedResponse = await caches.match(event.request);
+        
         if (cachedResponse) {
           console.log(`[SW] Serving from cache: ${event.request.url}`);
           return cachedResponse;
         }
-        console.log(`[SW] No cache available for ${event.request.url}`);
-        return caches.match(OFFLINE_URL);
-      })
+        
+        // For navigation requests, return offline page
+        if (event.request.mode === 'navigate') {
+          return caches.match(OFFLINE_URL);
+        }
+        
+        return new Response('Offline', { 
+          status: 503, 
+          statusText: 'Service Unavailable' 
+        });
+      }
+    })()
   );
 });
 
 // Background Sync Event
 self.addEventListener('sync', (event) => {
-  console.log(`[SW] Sync event triggered: ${event.tag}`);
+  console.log(`[SW] Sync event: ${event.tag}`);
   
   if (event.tag === 'sync-data') {
     event.waitUntil(
-      syncData().then(result => {
-        console.log('[SW] Sync completed:', result);
-        // Show notification when sync completes
-        self.registration.showNotification('Data Synced', {
-          body: 'Your data has been synchronized',
-          vibrate: [200, 100, 200]
-        });
-      }).catch(error => {
+      handleSync().catch(error => {
         console.error('[SW] Sync failed:', error);
+        return showNotification('Sync Failed', 'Could not sync data');
       })
     );
   }
 });
 
-// Push Notification Event
+// Push Notification Event (Robust Version)
 self.addEventListener('push', (event) => {
-    console.log('[SW] Push event received');
-    
-    let payload;
+  console.log('[SW] Push event received');
+  
+  // Handle both JSON and plain text payloads
+  let notificationData;
+  try {
+    notificationData = event.data?.json() || {};
+  } catch (e) {
     try {
-      payload = event.data?.json() || { 
-        title: 'New Update', 
-        body: 'You have new updates!',
-        url: '/' 
+      notificationData = {
+        body: event.data?.text() || 'New notification'
       };
-    } catch (e) {
-      // Handle non-JSON payload (plain text)
-      const text = event.data?.text() || 'New update available';
-      payload = {
-        title: 'Notification',
-        body: text,
-        url: '/'
-      };
+    } catch (error) {
+      notificationData = { body: 'New update available' };
     }
-  
-    console.log('[SW] Notification payload:', payload);
-  
-    event.waitUntil(
-      self.registration.showNotification(payload.title, {
-        body: payload.body,
-        data: { url: payload.url || '/' }
-      })
-    );
-  });
+  }
 
-// Example sync function (mock implementation)
+  const title = notificationData.title || 'New Update';
+  const options = {
+    body: notificationData.body || 'You have new updates!',
+    data: { url: notificationData.url || '/' },
+    vibrate: [200, 100, 200]
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+      .then(() => console.log('[SW] Notification shown'))
+      .catch(err => console.error('[SW] Notification failed:', err))
+  );
+});
+
+// Helper Functions
+async function handleSync() {
+  console.log('[SW] Starting sync...');
+  const result = await syncData();
+  await showNotification('Sync Complete', 'Data synchronized successfully');
+  return result;
+}
+
 function syncData() {
-  console.log('[SW] Starting data sync...');
-  // This would be your actual sync logic
   return new Promise((resolve) => {
     setTimeout(() => {
-      console.log('[SW] Mock sync operation completed');
-      resolve('Sync successful');
+      console.log('[SW] Mock sync completed');
+      resolve({ status: 'success' });
     }, 2000);
   });
+}
+
+async function showNotification(title, body) {
+  return self.registration.showNotification(title, { body });
 }
