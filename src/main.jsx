@@ -18,6 +18,13 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// In your main app code (after service worker registration):
+navigator.serviceWorker.ready.then(registration => {
+  registration.sync.register('sync-data')
+    .then(() => console.log('Sync registered'))
+    .catch(err => console.error('Sync registration failed:', err));
+});
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
