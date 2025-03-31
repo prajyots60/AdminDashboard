@@ -109,37 +109,56 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-// Push Notification Event (Robust Version)
+// Push Notification Event - Final Fixed Version
 self.addEventListener('push', (event) => {
-  console.log('[SW] Push event received');
+    console.log('[SW] Push event received');
   
-  // Handle both JSON and plain text payloads
-  let notificationData;
-  try {
-    notificationData = event.data?.json() || {};
-  } catch (e) {
+    // Default notification content
+    const defaultNotification = {
+      title: 'New Update',
+      body: 'You have new updates!',
+      url: '/'
+    };
+  
+    // Safely extract notification data
+    let notificationData = {...defaultNotification};
+    
     try {
-      notificationData = {
-        body: event.data?.text() || 'New notification'
-      };
-    } catch (error) {
-      notificationData = { body: 'New update available' };
+      // First try to get text (won't throw for non-JSON)
+      const textData = event.data?.text() || '';
+      
+      // Check if text looks like JSON
+      if (textData.trim().startsWith('{') && textData.trim().endsWith('}')) {
+        try {
+          // If it looks like JSON, try to parse
+          notificationData = {...defaultNotification, ...JSON.parse(textData)};
+        } catch (e) {
+          // If JSON parsing fails, use as plain text
+          notificationData.body = textData || defaultNotification.body;
+        }
+      } else {
+        // Plain text payload
+        notificationData.body = textData || defaultNotification.body;
+      }
+    } catch (e) {
+      console.warn('[SW] Could not read push data:', e);
     }
-  }
-
-  const title = notificationData.title || 'New Update';
-  const options = {
-    body: notificationData.body || 'You have new updates!',
-    data: { url: notificationData.url || '/' },
-    vibrate: [200, 100, 200]
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-      .then(() => console.log('[SW] Notification shown'))
-      .catch(err => console.error('[SW] Notification failed:', err))
-  );
-});
+  
+    console.log('[SW] Showing notification:', notificationData);
+  
+    event.waitUntil(
+      self.registration.showNotification(
+        notificationData.title,
+        {
+          body: notificationData.body,
+          data: { url: notificationData.url },
+          vibrate: [200, 100, 200]
+        }
+      ).catch(err => {
+        console.error('[SW] Failed to show notification:', err);
+      })
+    );
+  });
 
 // Helper Functions
 async function handleSync() {
